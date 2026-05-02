@@ -191,6 +191,7 @@ input[type=color]{width:44px;height:32px;border:none;border-radius:7px;cursor:po
         <div class="sb-section">Genel</div>
         <div class="ni active" onclick="goPage('dashboard')"><span class="nic">📊</span> Dashboard</div>
         <div class="ni" onclick="goPage('messages')"><span class="nic">✉️</span> Mesajlar <span class="nb" id="sb-unread" style="display:none">0</span></div>
+        <div class="ni" onclick="goPage('livechat')"><span class="nic">💬</span> Canlı Destek <span class="nb" id="sb-chat-badge" style="display:none">0</span></div>
         <div class="ni" onclick="goPage('logs')"><span class="nic">📋</span> Aktivite Logu</div>
 
         <div class="sb-section">İçerik</div>
@@ -279,6 +280,79 @@ input[type=color]{width:44px;height:32px;border:none;border-radius:7px;cursor:po
                 </div>
             </div>
             <div class="pb" id="messagesContainer">Yükleniyor...</div>
+        </div>
+    </div>
+
+    <!-- ══════════ CANLI DESTEK ══════════ -->
+    <div class="psec" id="page-livechat">
+        <style>
+        .chat-layout{display:grid;grid-template-columns:300px 1fr;gap:16px;height:calc(100vh - 140px)}
+        .sessions-panel{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
+        .sessions-header{padding:14px 16px;border-bottom:1px solid var(--line);font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:space-between}
+        .sessions-list{flex:1;overflow-y:auto;padding:8px}
+        .session-item{padding:12px;border-radius:12px;cursor:pointer;transition:.2s;margin-bottom:4px;border:1px solid transparent}
+        .session-item:hover{background:rgba(255,255,255,.04);border-color:var(--line)}
+        .session-item.active{background:rgba(34,211,238,.08);border-color:rgba(34,211,238,.2)}
+        .session-item .sname{font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px}
+        .session-item .slast{font-size:12px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .session-item .sbadge{margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:999px;flex-shrink:0}
+        .session-waiting{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--yellow);animation:pulse 1.5s infinite;flex-shrink:0}
+        .session-active{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0}
+        .chat-area-panel{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
+        .chat-area-header{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+        .chat-area-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+        .amsg{max-width:75%;padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.5;animation:msgIn .25s ease}
+        @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+        .amsg.visitor{background:rgba(255,255,255,.06);border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
+        .amsg.admin{background:linear-gradient(135deg,rgba(34,211,238,.15),rgba(59,130,246,.1));border:1px solid rgba(34,211,238,.2);align-self:flex-end;border-bottom-right-radius:4px}
+        .amsg-time{font-size:10px;color:var(--muted);margin-top:4px;font-family:monospace}
+        .chat-area-input{padding:14px;border-top:1px solid var(--line);display:flex;gap:8px}
+        .chat-area-input textarea{flex:1;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:10px;padding:10px 13px;color:var(--text);font-size:13px;outline:none;resize:none;height:60px;font-family:inherit;transition:.2s}
+        .chat-area-input textarea:focus{border-color:var(--cyan)}
+        .empty-chat{display:flex;align-items:center;justify-content:center;flex-direction:column;height:100%;color:var(--muted);gap:12px}
+        .empty-chat .ei{font-size:56px}
+        @media(max-width:768px){.chat-layout{grid-template-columns:1fr;height:auto}}
+        </style>
+
+        <div class="chat-layout">
+            <!-- Sessions list -->
+            <div class="sessions-panel">
+                <div class="sessions-header">
+                    💬 Aktif Sohbetler
+                    <button class="btn btn-out btn-sm" onclick="loadChatSessions()">🔄</button>
+                </div>
+                <div class="sessions-list" id="adminSessionsList">
+                    <div class="empty" style="padding:20px;font-size:13px">Yükleniyor...</div>
+                </div>
+            </div>
+
+            <!-- Chat area -->
+            <div class="chat-area-panel">
+                <div id="adminChatEmpty" class="empty-chat">
+                    <div class="ei">💬</div>
+                    <div>Soldaki listeden bir sohbet seçin</div>
+                    <div style="font-size:12px">Yeni sohbetler otomatik yenilenir</div>
+                </div>
+                <div id="adminChatActive" style="display:none;flex-direction:column;height:100%">
+                    <div class="chat-area-header">
+                        <div>
+                            <div style="font-size:15px;font-weight:700" id="adminChatVisitorName">—</div>
+                            <div style="font-size:12px;color:var(--muted)" id="adminChatVisitorEmail">—</div>
+                        </div>
+                        <div style="margin-left:auto;display:flex;gap:8px">
+                            <button class="btn btn-red btn-sm" onclick="closeAdminChat()">✕ Kapat</button>
+                        </div>
+                    </div>
+                    <div class="chat-area-messages" id="adminChatMessages"></div>
+                    <div class="chat-area-input" id="adminChatInputArea">
+                        <textarea id="adminChatInput" placeholder="Yanıt yazın... (Enter = gönder, Shift+Enter = yeni satır)" onkeydown="adminChatKeyDown(event)"></textarea>
+                        <button class="btn btn-pr" onclick="sendAdminReply()" style="align-self:flex-end;height:40px">Gönder</button>
+                    </div>
+                    <div id="adminChatClosed" style="display:none;text-align:center;padding:12px;color:var(--muted);font-size:13px;border-top:1px solid var(--line)">
+                        Bu sohbet kapatılmış.
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1165,6 +1239,169 @@ async function logoutAdmin(){
     await fetch('../api/logout.php');
     window.location.href='../index.php';
 }
+
+// ════════════════════════════════════════════════════════
+// CANLI DESTEK (ADMIN)
+// ════════════════════════════════════════════════════════
+let adminActiveChatId=null;
+let adminLastMsgId=0;
+let adminChatPoll=null;
+let adminSessionPoll=null;
+let totalChatUnread=0;
+
+async function loadChatSessions(){
+    try{
+        const res=await fetch('../api/chat.php?action=admin_sessions');
+        const data=await res.json();
+        if(!data.success)return;
+        
+        const list=document.getElementById('adminSessionsList');
+        const sessions=data.data.sessions;
+        
+        // Update badge
+        totalChatUnread=sessions.reduce((sum,s)=>sum+(parseInt(s.unread_count)||0),0);
+        const badge=document.getElementById('sb-chat-badge');
+        if(totalChatUnread>0){badge.style.display='flex';badge.textContent=totalChatUnread;}
+        else badge.style.display='none';
+        
+        if(sessions.length===0){
+            list.innerHTML='<div class="empty" style="padding:20px;font-size:13px;text-align:center">💬<br>Aktif sohbet yok</div>';
+            return;
+        }
+        
+        list.innerHTML=sessions.map(s=>`
+            <div class="session-item ${s.id==adminActiveChatId?'active':''}" onclick="selectAdminChat(${s.id},'${esc(s.visitor_name)}','${esc(s.visitor_email||'')}','${s.status}')">
+                <div class="sname">
+                    <span class="${s.status==='waiting'?'session-waiting':'session-active'}"></span>
+                    ${esc(s.visitor_name)}
+                    ${s.unread_count>0?`<span class="sbadge">${s.unread_count}</span>`:''}
+                </div>
+                <div class="slast">${s.last_message?esc(s.last_message):'Yeni sohbet'}</div>
+                <div style="font-size:10px;color:var(--muted);margin-top:3px">${s.status==='waiting'?'⏳ Bekliyor':'✅ Aktif'}</div>
+            </div>
+        `).join('');
+    }catch(e){}
+}
+
+function selectAdminChat(sessionId,name,email,status){
+    adminActiveChatId=sessionId;
+    adminLastMsgId=0;
+    clearInterval(adminChatPoll);
+    
+    document.getElementById('adminChatEmpty').style.display='none';
+    const active=document.getElementById('adminChatActive');
+    active.style.display='flex';
+    active.style.flexDirection='column';
+    
+    document.getElementById('adminChatVisitorName').textContent=name||'Ziyaretçi';
+    document.getElementById('adminChatVisitorEmail').textContent=email||'—';
+    document.getElementById('adminChatMessages').innerHTML='';
+    
+    if(status==='closed'){
+        document.getElementById('adminChatInputArea').style.display='none';
+        document.getElementById('adminChatClosed').style.display='block';
+    }else{
+        document.getElementById('adminChatInputArea').style.display='flex';
+        document.getElementById('adminChatClosed').style.display='none';
+    }
+    
+    loadAdminMessages();
+    adminChatPoll=setInterval(loadAdminMessages,2000);
+    
+    // Refresh sessions list
+    loadChatSessions();
+}
+
+async function loadAdminMessages(){
+    if(!adminActiveChatId)return;
+    try{
+        const res=await fetch(`../api/chat.php?action=admin_messages&session_id=${adminActiveChatId}&since=${adminLastMsgId}`);
+        const data=await res.json();
+        if(!data.success)return;
+        
+        data.data.messages.forEach(renderAdminMsg);
+        
+        if(data.data.session&&data.data.session.status==='closed'){
+            document.getElementById('adminChatInputArea').style.display='none';
+            document.getElementById('adminChatClosed').style.display='block';
+        }
+    }catch(e){}
+}
+
+function renderAdminMsg(msg){
+    if(msg.id<=adminLastMsgId)return;
+    adminLastMsgId=msg.id;
+    
+    const container=document.getElementById('adminChatMessages');
+    const div=document.createElement('div');
+    div.className='amsg '+msg.sender_type;
+    const time=new Date(msg.created_at).toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'});
+    div.innerHTML=`<div>${esc(msg.message)}</div><div class="amsg-time">${esc(msg.sender_name||'')} • ${time}</div>`;
+    container.appendChild(div);
+    container.scrollTop=container.scrollHeight;
+}
+
+async function sendAdminReply(){
+    const input=document.getElementById('adminChatInput');
+    const message=input.value.trim();
+    if(!message||!adminActiveChatId)return;
+    input.value='';
+    
+    try{
+        await fetch('../api/chat.php?action=admin_reply',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({session_id:adminActiveChatId,message})
+        });
+        loadAdminMessages();
+    }catch(e){}
+}
+
+async function closeAdminChat(){
+    if(!adminActiveChatId)return;
+    if(!confirm('Bu sohbeti kapatmak istediğinize emin misiniz?'))return;
+    try{
+        await fetch('../api/chat.php?action=admin_close',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({session_id:adminActiveChatId})
+        });
+        document.getElementById('adminChatInputArea').style.display='none';
+        document.getElementById('adminChatClosed').style.display='block';
+        loadChatSessions();
+        loadAdminMessages();
+        showToast('Sohbet kapatıldı','info');
+    }catch(e){}
+}
+
+function adminChatKeyDown(e){
+    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendAdminReply();}
+}
+
+// Start polling sessions when on live chat page - hook into goPage
+const _origGoPageChat=goPage;
+goPage=function(page){
+    _origGoPageChat(page);
+    if(page==='livechat'){
+        clearInterval(adminSessionPoll);
+        loadChatSessions();
+        adminSessionPoll=setInterval(loadChatSessions,3000);
+    }else{
+        clearInterval(adminSessionPoll);
+        clearInterval(adminChatPoll);
+    }
+};
+
+// Check for new chats periodically regardless of page
+setInterval(async()=>{
+    try{
+        const res=await fetch('../api/chat.php?action=admin_sessions');
+        const data=await res.json();
+        if(!data.success)return;
+        const total=data.data.sessions.reduce((sum,s)=>sum+(parseInt(s.unread_count)||0),0);
+        const badge=document.getElementById('sb-chat-badge');
+        if(total>0){badge.style.display='flex';badge.textContent=total;}
+        else badge.style.display='none';
+    }catch(e){}
+},5000);
 
 // ════════════════════════════════════════════════════════
 // BAŞLANGIÇ
